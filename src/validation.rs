@@ -39,7 +39,22 @@ impl<T, E> Validation<T, E> {
         }
     }
 
-    pub fn ap<F, U>(self, f: Validation<F, E>) -> Validation<U, E>
+    pub fn ap<U, V>(self, u: Validation<U, E>) -> Validation<V, E>
+    where
+        T: FnOnce(U) -> V,
+    {
+        match (self, u) {
+            (Validation::Ok(f), Validation::Ok(value)) => Validation::Ok(f(value)),
+            (Validation::Ok(_f), Validation::Errs(errors)) => Validation::Errs(errors),
+            (Validation::Errs(errors), Validation::Ok(_value)) => Validation::Errs(errors),
+            (Validation::Errs(mut errors_1), Validation::Errs(errors_2)) => {
+                errors_1.append(errors_2);
+                Validation::Errs(errors_1)
+            }
+        }
+    }
+
+    pub fn ap_flip<F, U>(self, f: Validation<F, E>) -> Validation<U, E>
     where
         F: FnOnce(T) -> U,
     {
@@ -58,7 +73,8 @@ impl<T, E> Validation<T, E> {
     where
         T: FromIterator<T>,
     {
-        self.ap(other.map(|other| |self_| vec![self_, other].into_iter().collect()))
+        self.map(|self_| |other| vec![self_, other].into_iter().collect())
+            .ap(other)
     }
 }
 
@@ -129,6 +145,31 @@ impl<T, E> From<Result<T, E>> for Validation<T, E> {
             Err(error) => Validation::Errs(error.into()),
         }
     }
+}
+
+#[macro_export]
+macro_rules! ap {
+    ($(,)* $validation_head:expr $(=> $map_errs_fn_head:expr)* $(, $validation_rest:expr $(=> $map_errs_fn_rest:expr)*)*; $ctr_fn:expr) => {
+        Validation::Ok($ctr_fn)
+            .ap($validation_head$(.map_errs($map_errs_fn_head))*)
+        $(
+            .ap($validation_rest$(.map_errs($map_errs_fn_rest))*)
+        )*
+    };
+}
+
+#[macro_export]
+macro_rules! ap_reverse {
+    ($(,)* $validation_last:expr $(=> $map_errs_fn_last:expr)*; $ctr_fn:expr) => {
+        $validation_last$(.map_errs($map_errs_fn_last))*.map($ctr_fn)
+    };
+
+    ($(,)* $validation_head:expr $(=> $map_errs_fn_head:expr)* $(, $validation_rest:expr $(=> $map_errs_fn_rest:expr)*)+; $ctr_fn:expr) => {
+        Validation::ap(
+            ap!($(, $validation_rest $(=> $map_errs_fn_rest)*)+; $ctr_fn),
+            $validation_head$(.map_errs($map_errs_fn_head))*,
+        )
+    };
 }
 
 #[cfg(test)]
@@ -218,13 +259,39 @@ mod tests {
         pub fn validate(raw: PersonRaw) -> Validation<Person, PersonValidationError> {
             let PersonRaw { email, name, phone } = raw;
 
+            Validation::Ok(|email| |name| |phone| Person { email, name, phone })
+                .ap(Email::validate(email)
+                    .map_errs(|errors| PersonValidationError::InvalidEmail(errors.head)))
+                .ap(FullName::validate(name).map_errs(|_| PersonValidationError::InvalidFullName))
+                .ap(PhoneNumber::validate(phone)
+                    .map_errs(PersonValidationError::InvalidPhoneNumber))
+        }
+
+        pub fn validate_flip(raw: PersonRaw) -> Validation<Person, PersonValidationError> {
+            let PersonRaw { email, name, phone } = raw;
+
             Email::validate(email)
                 .map_errs(|errors| PersonValidationError::InvalidEmail(errors.head))
-                .ap(FullName::validate(name)
-                    .map_errs(|_| PersonValidationError::InvalidFullName)
-                    .ap(PhoneNumber::validate(phone)
-                        .map_errs(PersonValidationError::InvalidPhoneNumber)
-                        .map(|phone| |name| |email| Person { email, name, phone })))
+                .ap_flip(
+                    FullName::validate(name)
+                        .map_errs(|_| PersonValidationError::InvalidFullName)
+                        .ap_flip(
+                            PhoneNumber::validate(phone)
+                                .map_errs(PersonValidationError::InvalidPhoneNumber)
+                                .map(|phone| |name| |email| Person { email, name, phone }),
+                        ),
+                )
+        }
+
+        pub fn validate_macro(raw: PersonRaw) -> Validation<Person, PersonValidationError> {
+            let PersonRaw { email, name, phone } = raw;
+
+            ap!(
+                Email::validate(email) => |errors| PersonValidationError::InvalidEmail(errors.head),
+                FullName::validate(name) => |_| PersonValidationError::InvalidFullName,
+                PhoneNumber::validate(phone) => PersonValidationError::InvalidPhoneNumber;
+                |email| |name| |phone| Person { email, name, phone }
+            )
         }
     }
 
@@ -333,6 +400,52 @@ mod tests {
             ],
         });
         let validation = Person::validate(valid_person_raw);
+
+        assert_eq!(expected, validation);
+    }
+
+    #[test]
+    pub fn validation_validate_person_invalid_all_flip() {
+        let valid_person_raw = PersonRaw {
+            email: "✉".into(),
+            name: "😂".into(),
+            phone: "📞".into(),
+        };
+
+        let expected = Validation::Errs(NonEmptyVec {
+            head: PersonValidationError::InvalidEmail("✉".into()),
+            tail: vec![
+                PersonValidationError::InvalidFullName,
+                PersonValidationError::InvalidPhoneNumber(NonEmptyVec {
+                    head: PhoneNumberValidationError::LengthOutOfRange,
+                    tail: vec![PhoneNumberValidationError::InvalidFormat],
+                }),
+            ],
+        });
+        let validation = Person::validate_flip(valid_person_raw);
+
+        assert_eq!(expected, validation);
+    }
+
+    #[test]
+    pub fn validation_validate_person_invalid_all_macro() {
+        let valid_person_raw = PersonRaw {
+            email: "✉".into(),
+            name: "😂".into(),
+            phone: "📞".into(),
+        };
+
+        let expected = Validation::Errs(NonEmptyVec {
+            head: PersonValidationError::InvalidEmail("✉".into()),
+            tail: vec![
+                PersonValidationError::InvalidFullName,
+                PersonValidationError::InvalidPhoneNumber(NonEmptyVec {
+                    head: PhoneNumberValidationError::LengthOutOfRange,
+                    tail: vec![PhoneNumberValidationError::InvalidFormat],
+                }),
+            ],
+        });
+        let validation = Person::validate_macro(valid_person_raw);
 
         assert_eq!(expected, validation);
     }
