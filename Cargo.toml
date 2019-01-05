@@ -3,3 +3,10 @@ name = "fp_validation"
 version = "0.0.1"
 authors = ["Semyon Ivanov <semyon95@gmail.com>"]
 edition = "2018"
+
+[dev-dependencies]
+criterion = "0.2"
+
+[[bench]]
+name = "validation"
+harness = false
