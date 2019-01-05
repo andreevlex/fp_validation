@@ -9,6 +9,10 @@ pub enum Validation<T, E> {
 }
 
 impl<T, E> Validation<T, E> {
+    pub fn err(error: E) -> Self {
+        Validation::Errs(NonEmptyVec::from(error))
+    }
+
     pub fn map<F, U>(self, f: F) -> Validation<U, E>
     where
         F: FnOnce(T) -> U,
