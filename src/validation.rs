@@ -9,8 +9,19 @@ pub enum Validation<T, E> {
 }
 
 impl<T, E> Validation<T, E> {
+    pub fn ok(value: T) -> Self {
+        Validation::Ok(value)
+    }
+
     pub fn err(error: E) -> Self {
         Validation::Errs(NonEmptyVec::from(error))
+    }
+
+    pub fn errs(first: E, rest: Vec<E>) -> Self {
+        Validation::Errs(NonEmptyVec {
+            head: first,
+            tail: rest,
+        })
     }
 
     pub fn map<F, U>(self, f: F) -> Validation<U, E>
@@ -154,7 +165,7 @@ impl<T, E> From<Result<T, E>> for Validation<T, E> {
 #[macro_export]
 macro_rules! ap {
     ($(,)* $validation_head:expr $(=> $map_errs_fn_head:expr)* $(, $validation_rest:expr $(=> $map_errs_fn_rest:expr)*)*; $ctr_fn:expr) => {
-        Validation::Ok($ctr_fn)
+        Validation::ok($ctr_fn)
             .ap($validation_head$(.map_errs($map_errs_fn_head))*)
         $(
             .ap($validation_rest$(.map_errs($map_errs_fn_rest))*)
@@ -186,9 +197,9 @@ mod tests {
     impl Email {
         pub fn validate(s: String) -> Validation<Self, String> {
             if s.chars().filter(|c| *c == '@').count() == 1 {
-                Validation::Ok(Email(s))
+                Validation::ok(Email(s))
             } else {
-                Validation::Errs(s.into())
+                Validation::err(s)
             }
         }
     }
@@ -199,9 +210,9 @@ mod tests {
     impl FullName {
         pub fn validate(s: String) -> Validation<Self, ()> {
             if s.chars().all(|c| c.is_alphabetic() || c == ' ') {
-                Validation::Ok(FullName(s))
+                Validation::ok(FullName(s))
             } else {
-                Validation::Errs(().into())
+                Validation::err(())
             }
         }
     }
@@ -219,17 +230,17 @@ mod tests {
         pub fn validate(s: String) -> Validation<Self, PhoneNumberValidationError> {
             let len = s.len();
             let length_validation = if len > 16 || len < 10 {
-                Validation::Errs(PhoneNumberValidationError::LengthOutOfRange.into())
+                Validation::err(PhoneNumberValidationError::LengthOutOfRange)
             } else {
-                Validation::Ok(())
+                Validation::ok(())
             };
 
             let mut chars = s.chars();
             let format_validation =
                 if chars.next() != Some('+') || !chars.all(|c| c.is_ascii_digit()) {
-                    Validation::Errs(PhoneNumberValidationError::InvalidFormat.into())
+                    Validation::err(PhoneNumberValidationError::InvalidFormat)
                 } else {
-                    Validation::Ok(())
+                    Validation::ok(())
                 };
 
             length_validation
@@ -263,7 +274,7 @@ mod tests {
         pub fn validate(raw: PersonRaw) -> Validation<Person, PersonValidationError> {
             let PersonRaw { email, name, phone } = raw;
 
-            Validation::Ok(|email| |name| |phone| Person { email, name, phone })
+            Validation::ok(|email| |name| |phone| Person { email, name, phone })
                 .ap(Email::validate(email)
                     .map_errs(|errors| PersonValidationError::InvalidEmail(errors.head)))
                 .ap(FullName::validate(name).map_errs(|_| PersonValidationError::InvalidFullName))
@@ -306,7 +317,7 @@ mod tests {
             Email::validate("bob@example.com".into()),
         ];
 
-        let expected = Validation::Ok(vec![
+        let expected = Validation::ok(vec![
             Email("alice@example.com".into()),
             Email("bob@example.com".into()),
         ]);
@@ -324,10 +335,7 @@ mod tests {
             Email::validate("bob@example.com".into()),
         ];
 
-        let expected = Validation::Errs(NonEmptyVec {
-            head: "✉".into(),
-            tail: vec![],
-        });
+        let expected = Validation::err("✉".into());
         let validation = email_validations
             .into_iter()
             .collect::<Validation<Vec<_>, String>>();
@@ -339,10 +347,7 @@ mod tests {
     pub fn validation_from_iterator_invalid_all() {
         let email_validations = vec![Email::validate("✉".into()), Email::validate(":3".into())];
 
-        let expected = Validation::Errs(NonEmptyVec {
-            head: "✉".into(),
-            tail: vec![":3".into()],
-        });
+        let expected = Validation::errs("✉".into(), vec![":3".into()]);
         let validation = email_validations
             .into_iter()
             .collect::<Validation<Vec<_>, String>>();
@@ -376,10 +381,7 @@ mod tests {
             phone: "+79991234567".into(),
         };
 
-        let expected = Validation::Errs(NonEmptyVec {
-            head: PersonValidationError::InvalidEmail("✉".into()),
-            tail: vec![],
-        });
+        let expected = Validation::err(PersonValidationError::InvalidEmail("✉".into()));
         let validation = Person::validate(valid_person_raw);
 
         assert_eq!(expected, validation);
@@ -393,16 +395,16 @@ mod tests {
             phone: "📞".into(),
         };
 
-        let expected = Validation::Errs(NonEmptyVec {
-            head: PersonValidationError::InvalidEmail("✉".into()),
-            tail: vec![
+        let expected = Validation::errs(
+            PersonValidationError::InvalidEmail("✉".into()),
+            vec![
                 PersonValidationError::InvalidFullName,
                 PersonValidationError::InvalidPhoneNumber(NonEmptyVec {
                     head: PhoneNumberValidationError::LengthOutOfRange,
                     tail: vec![PhoneNumberValidationError::InvalidFormat],
                 }),
             ],
-        });
+        );
         let validation = Person::validate(valid_person_raw);
 
         assert_eq!(expected, validation);
@@ -416,16 +418,16 @@ mod tests {
             phone: "📞".into(),
         };
 
-        let expected = Validation::Errs(NonEmptyVec {
-            head: PersonValidationError::InvalidEmail("✉".into()),
-            tail: vec![
+        let expected = Validation::errs(
+            PersonValidationError::InvalidEmail("✉".into()),
+            vec![
                 PersonValidationError::InvalidFullName,
                 PersonValidationError::InvalidPhoneNumber(NonEmptyVec {
                     head: PhoneNumberValidationError::LengthOutOfRange,
                     tail: vec![PhoneNumberValidationError::InvalidFormat],
                 }),
             ],
-        });
+        );
         let validation = Person::validate_flip(valid_person_raw);
 
         assert_eq!(expected, validation);
@@ -439,16 +441,16 @@ mod tests {
             phone: "📞".into(),
         };
 
-        let expected = Validation::Errs(NonEmptyVec {
-            head: PersonValidationError::InvalidEmail("✉".into()),
-            tail: vec![
+        let expected = Validation::errs(
+            PersonValidationError::InvalidEmail("✉".into()),
+            vec![
                 PersonValidationError::InvalidFullName,
                 PersonValidationError::InvalidPhoneNumber(NonEmptyVec {
                     head: PhoneNumberValidationError::LengthOutOfRange,
                     tail: vec![PhoneNumberValidationError::InvalidFormat],
                 }),
             ],
-        });
+        );
         let validation = Person::validate_macro(valid_person_raw);
 
         assert_eq!(expected, validation);
