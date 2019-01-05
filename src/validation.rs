@@ -18,10 +18,7 @@ impl<T, E> Validation<T, E> {
     }
 
     pub fn errs(first: E, rest: Vec<E>) -> Self {
-        Validation::Errs(NonEmptyVec {
-            head: first,
-            tail: rest,
-        })
+        Validation::Errs(NonEmptyVec { first, rest })
     }
 
     pub fn map<F, U>(self, f: F) -> Validation<U, E>
@@ -276,7 +273,7 @@ mod tests {
 
             Validation::ok(|email| |name| |phone| Person { email, name, phone })
                 .ap(Email::validate(email)
-                    .map_errs(|errors| PersonValidationError::InvalidEmail(errors.head)))
+                    .map_errs(|errors| PersonValidationError::InvalidEmail(errors.first)))
                 .ap(FullName::validate(name).map_errs(|_| PersonValidationError::InvalidFullName))
                 .ap(PhoneNumber::validate(phone)
                     .map_errs(PersonValidationError::InvalidPhoneNumber))
@@ -286,7 +283,7 @@ mod tests {
             let PersonRaw { email, name, phone } = raw;
 
             Email::validate(email)
-                .map_errs(|errors| PersonValidationError::InvalidEmail(errors.head))
+                .map_errs(|errors| PersonValidationError::InvalidEmail(errors.first))
                 .ap_flip(
                     FullName::validate(name)
                         .map_errs(|_| PersonValidationError::InvalidFullName)
@@ -302,7 +299,7 @@ mod tests {
             let PersonRaw { email, name, phone } = raw;
 
             ap!(
-                Email::validate(email) => |errors| PersonValidationError::InvalidEmail(errors.head),
+                Email::validate(email) => |errors| PersonValidationError::InvalidEmail(errors.first),
                 FullName::validate(name) => |_| PersonValidationError::InvalidFullName,
                 PhoneNumber::validate(phone) => PersonValidationError::InvalidPhoneNumber;
                 |email| |name| |phone| Person { email, name, phone }
@@ -400,8 +397,8 @@ mod tests {
             vec![
                 PersonValidationError::InvalidFullName,
                 PersonValidationError::InvalidPhoneNumber(NonEmptyVec {
-                    head: PhoneNumberValidationError::LengthOutOfRange,
-                    tail: vec![PhoneNumberValidationError::InvalidFormat],
+                    first: PhoneNumberValidationError::LengthOutOfRange,
+                    rest: vec![PhoneNumberValidationError::InvalidFormat],
                 }),
             ],
         );
@@ -423,8 +420,8 @@ mod tests {
             vec![
                 PersonValidationError::InvalidFullName,
                 PersonValidationError::InvalidPhoneNumber(NonEmptyVec {
-                    head: PhoneNumberValidationError::LengthOutOfRange,
-                    tail: vec![PhoneNumberValidationError::InvalidFormat],
+                    first: PhoneNumberValidationError::LengthOutOfRange,
+                    rest: vec![PhoneNumberValidationError::InvalidFormat],
                 }),
             ],
         );
@@ -446,8 +443,8 @@ mod tests {
             vec![
                 PersonValidationError::InvalidFullName,
                 PersonValidationError::InvalidPhoneNumber(NonEmptyVec {
-                    head: PhoneNumberValidationError::LengthOutOfRange,
-                    tail: vec![PhoneNumberValidationError::InvalidFormat],
+                    first: PhoneNumberValidationError::LengthOutOfRange,
+                    rest: vec![PhoneNumberValidationError::InvalidFormat],
                 }),
             ],
         );

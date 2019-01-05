@@ -4,8 +4,8 @@ use std::vec;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NonEmptyVec<T> {
-    pub head: T,
-    pub tail: Vec<T>,
+    pub first: T,
+    pub rest: Vec<T>,
 }
 
 impl<T> NonEmptyVec<T> {
@@ -13,47 +13,53 @@ impl<T> NonEmptyVec<T> {
     where
         F: FnMut(T) -> U,
     {
-        let NonEmptyVec { head, tail } = self;
+        let NonEmptyVec { first, rest } = self;
 
         NonEmptyVec {
-            head: f(head),
-            tail: tail.into_iter().map(f).collect(),
+            first: f(first),
+            rest: rest.into_iter().map(f).collect(),
         }
     }
 
     pub fn iter(&self) -> Iter<T> {
-        let Self { ref head, ref tail } = self;
-        let head_iter = iter::once(head);
-        let tail_iter = tail.iter();
+        let Self {
+            ref first,
+            ref rest,
+        } = self;
+        let first_iter = iter::once(first);
+        let rest_iter = rest.iter();
 
-        Iter(head_iter.chain(tail_iter))
+        Iter(first_iter.chain(rest_iter))
     }
 
     pub fn iter_mut(&mut self) -> IterMut<T> {
         let Self {
-            ref mut head,
-            ref mut tail,
+            ref mut first,
+            ref mut rest,
         } = self;
-        let head_iter = iter::once(head);
-        let tail_iter = tail.iter_mut();
+        let first_iter = iter::once(first);
+        let rest_iter = rest.iter_mut();
 
-        IterMut(head_iter.chain(tail_iter))
+        IterMut(first_iter.chain(rest_iter))
     }
 
     pub fn append(&mut self, other: Self) {
         let NonEmptyVec {
-            head: other_head,
-            tail: mut other_tail,
+            first: other_first,
+            rest: mut other_rest,
         } = other;
 
-        self.tail.push(other_head);
-        self.tail.append(&mut other_tail);
+        self.rest.push(other_first);
+        self.rest.append(&mut other_rest);
     }
 }
 
 impl<T> From<T> for NonEmptyVec<T> {
-    fn from(head: T) -> Self {
-        NonEmptyVec { head, tail: vec![] }
+    fn from(first: T) -> Self {
+        NonEmptyVec {
+            first,
+            rest: vec![],
+        }
     }
 }
 
@@ -95,11 +101,11 @@ impl<T> IntoIterator for NonEmptyVec<T> {
     type IntoIter = IntoIter<T>;
 
     fn into_iter(self) -> Self::IntoIter {
-        let NonEmptyVec { head, tail } = self;
-        let head_iter = iter::once(head);
-        let tail_iter = tail.into_iter();
+        let NonEmptyVec { first, rest } = self;
+        let first_iter = iter::once(first);
+        let rest_iter = rest.into_iter();
 
-        IntoIter(head_iter.chain(tail_iter))
+        IntoIter(first_iter.chain(rest_iter))
     }
 }
 
@@ -110,8 +116,8 @@ mod tests {
     #[test]
     fn non_empty_vec_iter_single_element() {
         let non_empty_vec = NonEmptyVec {
-            head: 0,
-            tail: vec![],
+            first: 0,
+            rest: vec![],
         };
         let mut iter = non_empty_vec.iter();
 
@@ -122,8 +128,8 @@ mod tests {
     #[test]
     fn non_empty_vec_iter_multiple_elements() {
         let non_empty_vec = NonEmptyVec {
-            head: 0,
-            tail: vec![1, 2],
+            first: 0,
+            rest: vec![1, 2],
         };
         let mut iter = non_empty_vec.iter();
 

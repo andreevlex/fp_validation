@@ -20,8 +20,8 @@ fn validation_ap() -> Validation<Person, String> {
     let v2 = Box::new(Validation::err("error name".into()));
 
     let errs3 = NonEmptyVec {
-        head: String::from("error phone 1"),
-        tail: vec![String::from("error phone 2"), String::from("error phone 3")],
+        first: String::from("error phone 1"),
+        rest: vec![String::from("error phone 2"), String::from("error phone 3")],
     };
     let v3 = Box::new(Validation::Errs(errs3));
 
@@ -49,8 +49,8 @@ fn validation_ap_flip() -> Validation<Person, String> {
     let v2 = Box::new(Validation::err("error name".into()));
 
     let errs3 = NonEmptyVec {
-        head: String::from("error phone 1"),
-        tail: vec![String::from("error phone 2"), String::from("error phone 3")],
+        first: String::from("error phone 1"),
+        rest: vec![String::from("error phone 2"), String::from("error phone 3")],
     };
     let v3 = Box::new(Validation::Errs(errs3));
 
